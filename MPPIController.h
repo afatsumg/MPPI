@@ -5,7 +5,8 @@
 #include <vector>
 #include "model.h"
 
-class MPPIController {
+class MPPIController
+{
 public:
     int K = 1000; // number of samples
     int N = 30;   // horizon length
@@ -17,14 +18,20 @@ public:
     double collision_cost_weight = 1e6;
     double obstacle_eps = 0.5;
 
+    // terminal cost multiplier (penalize final state error more)
+    double terminal_cost_weight = 1000.0;
+    // soft terminal zone radius (m): within this radius terminal cost is not amplified
+    double terminal_zone_radius = 0.2;
+
     // physical limits
-    double max_delta = 0.5;   // ±rad
-    double max_Fx = 5000.0;   // ±N
+    double max_delta = 0.5; // ±rad
+    double max_Fx = 5000.0; // ±N
 
     Eigen::MatrixXd U; // control sequence of size [2 x N]
-    VehicleModel* model;
+    VehicleModel *model;
 
-    MPPIController(VehicleModel* m) : model(m) {
+    MPPIController(VehicleModel *m) : model(m)
+    {
         // default parameters
         U = Eigen::MatrixXd::Zero(2, N);
         Sigma << 0.05, 0, 0, 100.0; // noise scale for steer and Fx
@@ -42,12 +49,17 @@ public:
 
     // Additional obstacles (x, y, psi, safety_radius)
     std::vector<Eigen::Vector4d> obstacles;
-    void setObstacles(const std::vector<Eigen::Vector4d>& obs) { obstacles = obs; }
+    void setObstacles(const std::vector<Eigen::Vector4d> &obs) { obstacles = obs; }
 
     // Main loop from Algorithm 1
-    Eigen::Vector2d computeControl(const Eigen::VectorXd& x_init, const Eigen::VectorXd& reference);
+    // reference: desired state (single point)
+    Eigen::Vector2d computeControl(const Eigen::VectorXd &x_init, const Eigen::VectorXd &reference);
+
+    // reference trajectory: desired states for each horizon step
+    Eigen::Vector2d computeControl(const Eigen::VectorXd &x_init, const std::vector<Eigen::VectorXd> &reference_traj);
+
     // running cost is public (for tuner)
-    double computeRunningCost(const Eigen::VectorXd& x, const Eigen::VectorXd& ref);
+    double computeRunningCost(const Eigen::VectorXd &x, const Eigen::VectorXd &ref, bool terminal = false);
 };
 
 #endif

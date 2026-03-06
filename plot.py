@@ -27,7 +27,16 @@ colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e3
 # --- PLOTS ---
 
 # 1. Trajectory (XY plot)
-axes[0, 0].plot(df['x'], df['y'], color=colors[0], linewidth=2)
+axes[0, 0].plot(df['x'], df['y'], color=colors[0], linewidth=2, label='actual')
+
+# optional: plot reference path / goal
+try:
+    ref_df = pd.read_csv('reference.csv')
+    axes[0, 0].plot(ref_df['x'], ref_df['y'], '--', color='black', linewidth=1.5, label='reference')
+    axes[0, 0].scatter(ref_df['x'].iloc[-1], ref_df['y'].iloc[-1], color='black', s=60, marker='x', label='goal')
+except FileNotFoundError:
+    ref_df = None
+
 if obs_df is not None:
     import matplotlib.patches as patches
     for _, row in obs_df.iterrows():
@@ -37,10 +46,12 @@ if obs_df is not None:
                                  angle=np.degrees(row['psi']),
                                  edgecolor='red', facecolor='red', alpha=0.3)
         axes[0,0].add_patch(rect)
+
 axes[0, 0].set_title('Vehicle Trajectory (XY)', fontweight='bold')
 axes[0, 0].set_xlabel('X Position [m]')
 axes[0, 0].set_ylabel('Y Position [m]')
 axes[0, 0].grid(True)
+axes[0, 0].legend()
 
 # 2. Longitudinal and lateral speeds (vx, vy)
 axes[0, 1].plot(df['time'], df['vx'], label='$V_x$', color=colors[1])

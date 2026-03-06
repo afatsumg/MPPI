@@ -33,13 +33,63 @@ int main() {
     Eigen::VectorXd x = Eigen::VectorXd::Zero(9);
     x(4) = 2.0; // starting at very low speed (2 m/s)
 
-    // 2. Parking reference (target: X=20m, Y=10m, Psi=0 rad, speed=0 m/s)
+    // 2. Parking reference (goal placed between the two parked cars)
     // State vector order: [x, y, psi, beta, vx, vy, r, delta, Fx]
-    Eigen::VectorXd reference = Eigen::VectorXd::Zero(9);
-    reference(0) = 5.0; // target X
-    reference(1) = 3.0; // target Y
-    reference(2) = 0.0;  // target orientation (straight parking)
-    reference(4) = 0.0;  // target speed (we want to stop)
+    Eigen::VectorXd goal = Eigen::VectorXd::Zero(9);
+    goal(0) = 6.0; // target X, placed between the two parked vehicles
+    goal(1) = 6.5; // target Y (slightly in front of them, to make it reachable)
+    goal(2) = 0.0;  // target orientation (straight parking)
+    goal(4) = 0.0;  // target speed (we want to stop)
+
+    // Build a smooth cubic (Hermite) trajectory from current pose to goal.
+    // We define tangents based on initial heading and a stopped final heading.
+    auto buildReferenceTrajectory = [&](const Eigen::VectorXd &state) {
+        std::vector<Eigen::VectorXd> traj;
+        traj.reserve(mppi.N);
+
+        Eigen::Vector2d p0(state(0), state(1));
+        Eigen::Vector2d p1(goal(0), goal(1));
+
+        // Starting tangent aligned with initial heading (psi=0 -> along +X)
+        Eigen::Vector2d t0(1.0, 0.0);
+        // End tangent is zero (we want to stop and face forward)
+        Eigen::Vector2d t1(0.0, 0.0);
+
+        // scale tangents to create a reasonable path length
+        double scale = (p1 - p0).norm();
+        t0 *= scale;
+
+        for (int i = 0; i < mppi.N; ++i) {
+            double s = double(i + 1) / double(mppi.N); // 0..1
+            double h00 = 2*s*s*s - 3*s*s + 1;
+            double h10 = s*s*s - 2*s*s + s;
+            double h01 = -2*s*s*s + 3*s*s;
+            double h11 = s*s*s - s*s;
+
+            Eigen::Vector2d pos = h00 * p0 + h10 * t0 + h01 * p1 + h11 * t1;
+
+            Eigen::VectorXd ref = goal;
+            ref(0) = pos.x();
+            ref(1) = pos.y();
+
+            // smooth speed profile (slowing down toward the end)
+            ref(4) = (1.0 - s) * 2.0;
+            traj.push_back(ref);
+        }
+
+        return traj;
+    };
+
+    // export the planned reference trajectory for plotting
+    std::ofstream ref_csv("reference.csv");
+    if (ref_csv.is_open()) {
+        ref_csv << "x,y\n";
+        auto initial_traj = buildReferenceTrajectory(x);
+        for (auto &r : initial_traj) {
+            ref_csv << r(0) << "," << r(1) << "\n";
+        }
+        ref_csv.close();
+    }
 
     std::cout << "Time\tX\tY\tPsi\tVx\tSteer\tFx" << std::endl;
     std::cout << "--------------------------------------------------------" << std::endl;
@@ -55,16 +105,18 @@ int main() {
     // 10-second parking maneuver
     double total_cost = 0.0;
     for (double t = 0; t <= 10.0; t += car.dt) {
-        
-        // MPPI chooses the best parking trajectory from 1000 scenarios each step
-        Eigen::Vector2d u_optimal = mppi.computeControl(x, reference);
+        // build a simple reference trajectory toward the goal
+        auto reference_traj = buildReferenceTrajectory(x);
 
-        // Modeli ilerlet
+        // MPPI chooses the best trajectory based on the reference trajectory
+        Eigen::Vector2d u_optimal = mppi.computeControl(x, reference_traj);
+
+        // step the model forward
         Eigen::VectorXd x_next(9);
         car.Predict(x, u_optimal, x_next);
         x = x_next;
-        // accumulate cost for tuning
-        total_cost += mppi.computeRunningCost(x, reference);
+        // accumulate cost for tuning (use first point in trajectory as current desired)
+        total_cost += mppi.computeRunningCost(x, reference_traj.front());
         // check for NaN or overflow states
         if (x.hasNaN()) {
             std::cerr << "State became NaN, aborting simulation at t=" << t << "\n";
@@ -91,7 +143,7 @@ int main() {
         }
 
         // end simulation if close enough to goal
-        double dist = std::sqrt(std::pow(x(0)-reference(0),2) + std::pow(x(1)-reference(1),2));
+        double dist = std::sqrt(std::pow(x(0)-goal(0),2) + std::pow(x(1)-goal(1),2));
         //std::cout << "Distance to target: " << dist << " m" << std::endl;
         //std::cout << "Velocity: " << x(4) << " m/s" << std::endl;
         if (std::isnan(x(4))) {

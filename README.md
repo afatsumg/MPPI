@@ -61,6 +61,8 @@ pos_cost_weight 200.0
 vel_cost_weight 100.0
 delta_cost_weight 50.0
 collision_cost_weight 1e1
+terminal_cost_weight 1000.0
+terminal_zone_radius 0.2
 obstacle_eps 0.5
 ```
 
