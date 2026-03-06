@@ -38,13 +38,6 @@ public:
     }
 
     // Read values from a simple key-value config file (one per line)
-    // File might look like:
-    //   # comment line
-    //   K 1000
-    //   N 30
-    //   lambda 1.0
-    //   Sigma00 0.05
-    //   Sigma11 100.0
     bool loadConfig(const std::string &filename);
 
     // Additional obstacles (x, y, psi, safety_radius)
